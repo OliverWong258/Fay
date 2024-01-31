@@ -109,6 +109,7 @@ class MyServer:
             return
         jsonObj = json.dumps(content)
         self.__listCmd.append(jsonObj)
+        #print("Cmd list: ", self.__listCmd)
         # util.log('命令 {}'.format(content))
 
     # 开启服务

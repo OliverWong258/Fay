@@ -6,6 +6,16 @@ from scheduler.thread_manager import MyThread
 import shlex
 import subprocess
 import time
+from transformers import BertTokenizer, BertModel
+import torch
+from sklearn.metrics.pairwise import cosine_similarity
+
+"""
+# load pre-trained BERT model and tokenizer
+model_name = 'bert-base-chinese'
+tokenizer = BertTokenizer.from_pretrained(model_name)
+model = BertModel.from_pretrained(model_name)
+"""
 
 def question(query_type,text):
     qa = QAService()
@@ -90,5 +100,38 @@ class QAService:
 
     def __string_similar(self, s1, s2):
         return difflib.SequenceMatcher(None, s1, s2).quick_ratio()
+    
+    def _similarity(self, s1, s2):
+        tokens1 = tokenizer.tokenize(s1)
+        tokens1 = ['[CLS]'] + tokens1 + ['[SEP]']
+        tokens2 = tokenizer.tokenize(s2)
+        tokens2 = ['[CLS]'] + tokens2 + ['[SEP]']
+ 
+        # change tokens to indexes
+        input_ids1 = tokenizer.convert_tokens_to_ids(tokens1)
+        input_ids2 = tokenizer.convert_tokens_to_ids(tokens2)
+ 
+        # print(input_ids1)
+        # change input to pytorch tensor
+        input_tensor1 = torch.tensor([input_ids1])
+        input_tensor2 = torch.tensor([input_ids2])
+        # print(input_tensor1)
+        # get word vector
+        with torch.no_grad():
+            outputs1 = model(input_tensor1)
+            embeddings1 = outputs1[0][0]
+            outputs2 = model(input_tensor2)
+            embeddings2 = outputs2[0][0]
+        # compute the expression of sentence
+        sentence_embedding1 = torch.mean(embeddings1, dim=0)
+        sentence_embedding2 = torch.mean(embeddings2, dim=0)
+        # print(sentence_embedding1)
+        # compute cosine similarity
+        similarity = cosine_similarity(sentence_embedding1.unsqueeze(0), sentence_embedding2.unsqueeze(0))
+        return similarity[0][0]
 
-
+if __name__ == "__main__":
+    qa = QAService()
+    s1 = "帮我运行一个app"
+    s2 = "你好"
+    print(qa._similarity(s1, s2))

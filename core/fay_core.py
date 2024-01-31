@@ -7,6 +7,7 @@ import time
 import wave
 import socket
 import json 
+import threading
 
 import eyed3
 from openpyxl import load_workbook
@@ -163,6 +164,7 @@ class FeiFei:
         self.muting = False
         self.cemotion = None
         self.stop_say = False
+        
 
 
     def __play_song(self):
@@ -417,11 +419,22 @@ class FeiFei:
                 util.log(1, '合成音频...')
                 tm = time.time()
                 #文字也推送出去，为了ue5
-                result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
-                util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
-                if result is not None:            
-                    MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
-                    return result
+                parts = self.__split_text(text=self.a_msg, length=100) # split the msg to several parts
+                # print("parts: ", parts)
+                previous_thread_event = None # the prev thread event
+                current_thread_event = None # the current thread event
+                for part in parts:
+                    result = self.sp.to_sample(part, self.__get_mood_voice())
+                    #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
+                    util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
+                    tm = time.time()
+                    if result is not None:
+                        previous_thread_event = current_thread_event
+                        current_thread_event = threading.Event()
+                        time.sleep(10+0.1*len(part))
+                        MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event]).start()
+                        #MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
+                        #return result
         except BaseException as e:
             print(e)
         self.speaking = False
@@ -434,7 +447,7 @@ class FeiFei:
         pygame.mixer.music.play()
 
 
-    def __send_or_play_audio(self, file_url, say_type):
+    def __send_or_play_audio(self, file_url, say_type, prev_thread_event, curr_thread_event):
         try:
             try:
                 logging.getLogger('eyed3').setLevel(logging.ERROR)
@@ -450,6 +463,8 @@ class FeiFei:
                 self.__play_sound(file_url)
             else:#发送音频给ue和socket
                 #推送ue
+                if prev_thread_event:
+                    prev_thread_event.wait() # wait for the prev thread to keep the right order
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
                 if platform.system() == "Windows":
@@ -462,6 +477,7 @@ class FeiFei:
                         print(e)
                         util.log(1, "唇型数字生成失败，无法使用新版ue5工程")
                 wsa_server.get_instance().add_cmd(content)
+                curr_thread_event.set()
 
             #推送远程音频
             if self.deviceConnect is not None:
@@ -554,3 +570,28 @@ class FeiFei:
         if self.deviceSocket is not None:
             self.deviceSocket.close()
 
+    # splited text in a list
+    def __split_text(self, text, length):
+        chinese_punctuations = "。？！”’）》】"
+        substrings = []
+        start = 0
+
+        while start < len(text):
+            # Take a slice of the text of the desired length
+            end = min(start + length, len(text))
+        
+            # Extend the slice until a Chinese punctuation mark is found or the text ends
+            while end < len(text) and text[end] not in chinese_punctuations:
+                end += 1
+
+            # Include the punctuation mark
+            if end < len(text):
+                end += 1
+
+            # Add the substring to the list
+            substrings.append(text[start:end])
+        
+            # Update the start position for the next slice
+            start = end
+
+        return substrings
