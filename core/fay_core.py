@@ -447,7 +447,7 @@ class FeiFei:
         pygame.mixer.music.play()
 
 
-    def __send_or_play_audio(self, file_url, say_type, prev_thread_event, curr_thread_event):
+    def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None):
         try:
             try:
                 logging.getLogger('eyed3').setLevel(logging.ERROR)
@@ -463,7 +463,7 @@ class FeiFei:
                 self.__play_sound(file_url)
             else:#发送音频给ue和socket
                 #推送ue
-                if prev_thread_event:
+                if prev_thread_event!=None:
                     prev_thread_event.wait() # wait for the prev thread to keep the right order
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
@@ -477,7 +477,8 @@ class FeiFei:
                         print(e)
                         util.log(1, "唇型数字生成失败，无法使用新版ue5工程")
                 wsa_server.get_instance().add_cmd(content)
-                curr_thread_event.set()
+                if curr_thread_event != None:
+                    curr_thread_event.set()
 
             #推送远程音频
             if self.deviceConnect is not None:
