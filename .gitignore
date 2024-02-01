@@ -130,3 +130,9 @@ dmypy.json
 
 # visual studio
 .vs/
+
+# samples
+samples/
+
+# sentence bert
+paraphrase-multilingual-MiniLM-L12-v2/
