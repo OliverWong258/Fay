@@ -136,3 +136,6 @@ samples/
 
 # sentence bert
 paraphrase-multilingual-MiniLM-L12-v2/
+
+# api keys
+system.conf
