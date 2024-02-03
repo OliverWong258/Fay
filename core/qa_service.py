@@ -6,11 +6,7 @@ from scheduler.thread_manager import MyThread
 import shlex
 import subprocess
 import time
-from sentence_transformers.util import cos_sim  
-from sentence_transformers import SentenceTransformer as SBert
-
-# load pretrained model
-model = SBert('paraphrase-multilingual-MiniLM-L12-v2')
+from ai_module import sentence_bert
 
 def question(query_type,text):
     qa = QAService()
@@ -99,9 +95,6 @@ class QAService:
     
     
     def __SBert_similar(self, s1, s2):
-        embeddings1 = model.encode(s1)
-        embeddings2 = model.encode(s2)
-
         # Compute cosine-similarits
-        return float(cos_sim(embeddings1, embeddings2))
+        return sentence_bert.similarity(s1, s2)
 

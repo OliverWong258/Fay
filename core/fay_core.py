@@ -9,6 +9,7 @@ import socket
 import json 
 import threading
 
+
 import eyed3
 from openpyxl import load_workbook
 import logging
@@ -42,6 +43,8 @@ from ai_module import nlp_lingju
 from ai_module import nlp_rwkv_api
 from ai_module import nlp_ChatGLM2
 from ai_module import nlp_fastgpt
+from ai_module import clf
+from ai_module import sentence_bert
 
 import platform
 if platform.system() == "Windows":
@@ -60,6 +63,9 @@ modules = {
     "nlp_fastgpt": nlp_fastgpt
 
 }
+
+# load language model
+nlp = clf.nlp
 
 
 def determine_nlp_strategy(sendto,msg):
@@ -89,7 +95,6 @@ def determine_nlp_strategy(sendto,msg):
         print(e)
         util.log(1, '自然语言处理错误！')
         text = '哎呀，你这么说我也不懂，详细点呗'   
-
     return text,textlist
     
 
@@ -100,33 +105,33 @@ def determine_nlp_strategy(sendto,msg):
 
 #文本消息处理
 def send_for_answer(msg,sendto):
-        contentdb = Content_Db()
-        contentdb.add_content('member','send',msg)
-        wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":msg}})
-        textlist = []
-        text = None
-        # 人设问答
-        keyword = qa_service.question('Persona',msg)
-        if keyword is not None:
-            text = config_util.config["attribute"][keyword]
+    contentdb = Content_Db()
+    contentdb.add_content('member','send',msg)
+    wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":msg}})
+    textlist = []
+    text = None
+    # 人设问答
+    keyword = qa_service.question('Persona',msg)
+    if keyword is not None:
+        text = config_util.config["attribute"][keyword]
 
-        # 全局问答
-        if text is None:
-            answer = qa_service.question('qa',msg)
-            if answer is not None:
-                text = answer       
-            else:
-                text,textlist = determine_nlp_strategy(sendto,msg)
+    # 全局问答
+    if text is None:
+        answer = qa_service.question('qa',msg)
+        if answer is not None:
+            text = answer       
+        else:
+            text,textlist = determine_nlp_strategy(sendto,msg)
                 
-        contentdb.add_content('fay','send',text)
-        wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":text}})
-        if len(textlist) > 1:
-            i = 1
-            while i < len(textlist):
-                  contentdb.add_content('fay','send',textlist[i]['text'])
-                  wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":textlist[i]['text']}})
-                  i+= 1
-        return text
+    contentdb.add_content('fay','send',text)
+    wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":text}})
+    if len(textlist) > 1:
+        i = 1
+        while i < len(textlist):
+                contentdb.add_content('fay','send',textlist[i]['text'])
+                wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":textlist[i]['text']}})
+                i+= 1
+    return text
 
 
 class FeiFei:
@@ -164,7 +169,12 @@ class FeiFei:
         self.muting = False
         self.cemotion = None
         self.stop_say = False
-        
+        self.speak_to_chatbot = False # whether the user is speaking to chatbot or not
+        self.prev_interact = None # the previous interaction
+        self.name = config_util.config["attribute"]["name"] # the name of the chatbot
+        self.stop_prompt = "不是在和你说话"
+        self.goodbye_msg = "好的，有问题随时找我"
+        self.check_UserIntent_msg = "请问您是在和我说话吗？"
 
 
     def __play_song(self):
@@ -245,47 +255,87 @@ class FeiFei:
                     interact: Interact = self.interactive.pop()
                     index = interact.interact_type
                     if index == 1:
-                        self.q_msg = interact.data["msg"]
-                        self.write_to_file("./logs", "asr_result.txt",  self.q_msg)
-                        if not config_util.config["interact"]["playSound"]: # 非展板播放
-                            content = {'Topic': 'Unreal', 'Data': {'Key': 'question', 'Value': self.q_msg}}
-                            wsa_server.get_instance().add_cmd(content)
-                        #fay eyes
-                        fay_eyes = yolov8.new_instance()            
-                        if fay_eyes.get_status():#YOLO正在运行
-                            person_count, stand_count, sit_count = fay_eyes.get_counts()
-                            if person_count < 1: #看不到人，不互动
-                                 wsa_server.get_web_instance().add_cmd({"panelMsg": "看不到人，不互动"})
-                                 if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "看不到人，不互动"}}
-                                    wsa_server.get_instance().add_cmd(content)
-                                 continue
-
-                        answer = self.__get_answer(interact.interleaver, self.q_msg)#确定是否命中指令或q&a
-                        if(self.muting): #静音指令正在执行
-                            wsa_server.get_web_instance().add_cmd({"panelMsg": "静音指令正在执行，不互动"})
-                            if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "静音指令正在执行，不互动"}}
-                                wsa_server.get_instance().add_cmd(content)
-                            continue
-
-                        contentdb = Content_Db()    
-                        contentdb.add_content('member','speak',self.q_msg)
-                        wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":self.q_msg}})
-                     
-
                         text = ''
                         textlist = []
-                        self.speaking = True
-                        if answer is None:
-                            wsa_server.get_web_instance().add_cmd({"panelMsg": "思考中..."})
-                            if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "思考中..."}}
+                        contentdb = Content_Db()
+                        self.q_msg = interact.data["msg"]
+                        if not self.speak_to_chatbot:
+                            if self.prev_interact != None:
+                                if clf.predict(self.q_msg) == 1:
+                                    self.speak_to_chatbot = True
+                                    interact = self.prev_interact
+                                    self.q_msg = interact.data["msg"]
+                                else:
+                                    self.prev_interact = None
+                                    self.a_msg = self.goodbye_msg
+                                    text = self.a_msg
+                                    textlist.append(text)
+                            else:
+                                 # check if the use is speaking to chatbot
+                                doc = nlp(self.q_msg)
+                                print("doc: ", doc)
+                                entities = [(ent.text, ent.label_) for ent in doc.ents]
+                                dep_tree = [(token.text, token.dep_, token.head.text) for token in doc]
+                                print("ent: ", entities)
+                                print("dep: ", dep_tree)
+                                for ent in doc.ents:
+                                    if ent.text == self.name:
+                                        self.speak_to_chatbot = True
+                                if not self.speak_to_chatbot:
+                                    self.prev_interact = interact
+                                    self.a_msg = self.check_UserIntent_msg
+                                    text = self.a_msg
+                                    textlist.append(text)
+                        else:
+                            if sentence_bert.similarity(self.stop_prompt, self.q_msg) > 0.7:
+                                self.speak_to_chatbot = False
+                                self.a_msg = self.goodbye_msg
+                                text = self.a_msg
+                                textlist.append(text)
+                                self.prev_interact = None
+                        
+                        if self.speak_to_chatbot:
+                            self.write_to_file("./logs", "asr_result.txt",  self.q_msg)
+                            if not config_util.config["interact"]["playSound"]: # 非展板播放
+                                content = {'Topic': 'Unreal', 'Data': {'Key': 'question', 'Value': self.q_msg}}
                                 wsa_server.get_instance().add_cmd(content)
-                            text,textlist = determine_nlp_strategy(1,self.q_msg)
-                        elif answer != 'NO_ANSWER': #语音内容没有命中指令,回复q&a内容
-                            text = answer
-                        self.a_msg = text
+                            #fay eyes
+                            fay_eyes = yolov8.new_instance()            
+                            if fay_eyes.get_status():#YOLO正在运行
+                                person_count, stand_count, sit_count = fay_eyes.get_counts()
+                                if person_count < 1: #看不到人，不互动
+                                     wsa_server.get_web_instance().add_cmd({"panelMsg": "看不到人，不互动"})
+                                     if not cfg.config["interact"]["playSound"]: # 非展板播放
+                                        content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "看不到人，不互动"}}
+                                        wsa_server.get_instance().add_cmd(content)
+                                     continue
+
+                            answer = self.__get_answer(interact.interleaver, self.q_msg)#确定是否命中指令或q&a
+                            if(self.muting): #静音指令正在执行
+                                wsa_server.get_web_instance().add_cmd({"panelMsg": "静音指令正在执行，不互动"})
+                                if not cfg.config["interact"]["playSound"]: # 非展板播放
+                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "静音指令正在执行，不互动"}}
+                                    wsa_server.get_instance().add_cmd(content)
+                                continue
+
+                            #contentdb = Content_Db()    
+                            contentdb.add_content('member','speak',self.q_msg)
+                            wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":self.q_msg}})
+                     
+
+                            #text = ''
+                            #textlist = []
+                            self.speaking = True
+                            if answer is None:
+                                wsa_server.get_web_instance().add_cmd({"panelMsg": "思考中..."})
+                                if not cfg.config["interact"]["playSound"]: # 非展板播放
+                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "思考中..."}}
+                                    wsa_server.get_instance().add_cmd(content)
+                                text,textlist = determine_nlp_strategy(1,self.q_msg)
+                            elif answer != 'NO_ANSWER': #语音内容没有命中指令,回复q&a内容
+                                text = answer
+                            self.a_msg = text
+                            
                         self.write_to_file("./logs", "answer_result.txt", text)
                         contentdb.add_content('fay','speak',self.a_msg)
                         wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":self.a_msg}})
