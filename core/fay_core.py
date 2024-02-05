@@ -169,12 +169,7 @@ class FeiFei:
         self.muting = False
         self.cemotion = None
         self.stop_say = False
-        self.speak_to_chatbot = False # whether the user is speaking to chatbot or not
-        self.prev_interact = None # the previous interaction
         self.name = config_util.config["attribute"]["name"] # the name of the chatbot
-        self.stop_prompt = "不是在和你说话"
-        self.goodbye_msg = "好的，有问题随时找我"
-        self.check_UserIntent_msg = "请问您是在和我说话吗？"
 
 
     def __play_song(self):
@@ -255,87 +250,49 @@ class FeiFei:
                     interact: Interact = self.interactive.pop()
                     index = interact.interact_type
                     if index == 1:
-                        text = ''
-                        textlist = []
-                        contentdb = Content_Db()
-                        self.q_msg = interact.data["msg"]
-                        if not self.speak_to_chatbot:
-                            if self.prev_interact != None:
-                                if clf.predict(self.q_msg) == 1:
-                                    self.speak_to_chatbot = True
-                                    interact = self.prev_interact
-                                    self.q_msg = interact.data["msg"]
-                                else:
-                                    self.prev_interact = None
-                                    self.a_msg = self.goodbye_msg
-                                    text = self.a_msg
-                                    textlist.append(text)
-                            else:
-                                 # check if the use is speaking to chatbot
-                                doc = nlp(self.q_msg)
-                                print("doc: ", doc)
-                                entities = [(ent.text, ent.label_) for ent in doc.ents]
-                                dep_tree = [(token.text, token.dep_, token.head.text) for token in doc]
-                                print("ent: ", entities)
-                                print("dep: ", dep_tree)
-                                for ent in doc.ents:
-                                    if ent.text == self.name:
-                                        self.speak_to_chatbot = True
-                                if not self.speak_to_chatbot:
-                                    self.prev_interact = interact
-                                    self.a_msg = self.check_UserIntent_msg
-                                    text = self.a_msg
-                                    textlist.append(text)
-                        else:
-                            if sentence_bert.similarity(self.stop_prompt, self.q_msg) > 0.7:
-                                self.speak_to_chatbot = False
-                                self.a_msg = self.goodbye_msg
-                                text = self.a_msg
-                                textlist.append(text)
-                                self.prev_interact = None
-                        
-                        if self.speak_to_chatbot:
-                            self.write_to_file("./logs", "asr_result.txt",  self.q_msg)
-                            if not config_util.config["interact"]["playSound"]: # 非展板播放
-                                content = {'Topic': 'Unreal', 'Data': {'Key': 'question', 'Value': self.q_msg}}
-                                wsa_server.get_instance().add_cmd(content)
-                            #fay eyes
-                            fay_eyes = yolov8.new_instance()            
-                            if fay_eyes.get_status():#YOLO正在运行
-                                person_count, stand_count, sit_count = fay_eyes.get_counts()
-                                if person_count < 1: #看不到人，不互动
-                                     wsa_server.get_web_instance().add_cmd({"panelMsg": "看不到人，不互动"})
-                                     if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                        content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "看不到人，不互动"}}
-                                        wsa_server.get_instance().add_cmd(content)
-                                     continue
-
-                            answer = self.__get_answer(interact.interleaver, self.q_msg)#确定是否命中指令或q&a
-                            if(self.muting): #静音指令正在执行
-                                wsa_server.get_web_instance().add_cmd({"panelMsg": "静音指令正在执行，不互动"})
+                        self.q_msg = interact.data["msg"]                        
+                        self.write_to_file("./logs", "asr_result.txt",  self.q_msg)
+                        if not config_util.config["interact"]["playSound"]: # 非展板播放
+                            content = {'Topic': 'Unreal', 'Data': {'Key': 'question', 'Value': self.q_msg}}
+                            wsa_server.get_instance().add_cmd(content)
+                        #fay eyes
+                        fay_eyes = yolov8.new_instance()            
+                        if fay_eyes.get_status():#YOLO正在运行
+                            person_count, stand_count, sit_count = fay_eyes.get_counts()
+                            if person_count < 1: #看不到人，不互动
+                                wsa_server.get_web_instance().add_cmd({"panelMsg": "看不到人，不互动"})
                                 if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "静音指令正在执行，不互动"}}
+                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "看不到人，不互动"}}
                                     wsa_server.get_instance().add_cmd(content)
                                 continue
 
-                            #contentdb = Content_Db()    
-                            contentdb.add_content('member','speak',self.q_msg)
-                            wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":self.q_msg}})
+                        answer = self.__get_answer(interact.interleaver, self.q_msg)#确定是否命中指令或q&a
+                        if(self.muting): #静音指令正在执行
+                            wsa_server.get_web_instance().add_cmd({"panelMsg": "静音指令正在执行，不互动"})
+                            if not cfg.config["interact"]["playSound"]: # 非展板播放
+                                content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "静音指令正在执行，不互动"}}
+                                wsa_server.get_instance().add_cmd(content)
+                            continue
+
+                        contentdb = Content_Db()    
+                        contentdb.add_content('member','speak',self.q_msg)
+                        wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":self.q_msg}})
                      
 
-                            #text = ''
-                            #textlist = []
-                            self.speaking = True
-                            if answer is None:
-                                wsa_server.get_web_instance().add_cmd({"panelMsg": "思考中..."})
-                                if not cfg.config["interact"]["playSound"]: # 非展板播放
-                                    content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "思考中..."}}
-                                    wsa_server.get_instance().add_cmd(content)
-                                text,textlist = determine_nlp_strategy(1,self.q_msg)
-                            elif answer != 'NO_ANSWER': #语音内容没有命中指令,回复q&a内容
-                                text = answer
-                            self.a_msg = text
-                            
+                        text = ''
+                        textlist = []
+                        self.speaking = True
+                        if answer is None:
+                            wsa_server.get_web_instance().add_cmd({"panelMsg": "思考中..."})
+                            if not cfg.config["interact"]["playSound"]: # 非展板播放
+                                content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "思考中..."}}
+                                wsa_server.get_instance().add_cmd(content)
+                            text,textlist = determine_nlp_strategy(1,self.q_msg)
+                        elif answer != 'NO_ANSWER': #语音内容没有命中指令,回复q&a内容
+                            text = answer
+                        self.a_msg = text
+                        # the emotion of the chatbot should mainly rely on the response
+                        MyThread(target=self.__update_mood, args=[interact.interact_type]).start()                        
                         self.write_to_file("./logs", "answer_result.txt", text)
                         contentdb.add_content('fay','speak',self.a_msg)
                         wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":self.a_msg}})
@@ -368,7 +325,8 @@ class FeiFei:
 
     def on_interact(self, interact: Interact):
         self.interactive.append(interact)
-        MyThread(target=self.__update_mood, args=[interact.interact_type]).start()
+        # the emotion of the chatbot should mainly rely on the response
+        #MyThread(target=self.__update_mood, args=[interact.interact_type]).start()
         MyThread(target=storer.storage_live_interact, args=[interact]).start()
 
 
@@ -406,18 +364,21 @@ class FeiFei:
         if typeIndex == 1:
             try:
                 if cfg.ltp_mode == "cemotion":
-                    result = nlp_cemotion.get_sentiment(self.cemotion,self.q_msg)
+                    result = nlp_cemotion.get_sentiment(self.cemotion,self.a_msg) # the emotion of the chatbot should rely on the response first
                     chat_perception = perception["chat"]
                     if result >= 0.5 and result <= 1:
-                       self.mood = self.mood + (chat_perception / 200.0)
+                        self.mood = self.mood + (chat_perception / 200.0)
                     elif result <= 0.2:
-                       self.mood = self.mood - (chat_perception / 100.0)
+                        self.mood = self.mood - (chat_perception / 100.0)
+                    print("User question: ", self.q_msg)
+                    print("ChatBot respond: ", self.a_msg)
+                    print("ChatBot mood: ", self.mood)
                 else:
-                    result = xf_ltp.get_sentiment(self.q_msg)
+                    result = xf_ltp.get_sentiment(self.a_msg)
                     chat_perception = perception["chat"]
                     if result == 1:
                         self.mood = self.mood + (chat_perception / 200.0)
-                    elif result == -1:
+                    elif result == -1: 
                         self.mood = self.mood - (chat_perception / 100.0)
             except BaseException as e:
                 print("[System] 情绪更新错误！")
@@ -431,7 +392,6 @@ class FeiFei:
 
         elif typeIndex == 4:
             self.mood = self.mood + (perception["follow"] / 100.0)
-
         if self.mood >= 1:
             self.mood = 1
         if self.mood <= -1:
@@ -467,17 +427,17 @@ class FeiFei:
                     wsa_server.get_instance().add_cmd(content)
                 MyThread(target=storer.storage_live_interact, args=[Interact('Fay', 0, {'user': 'Fay', 'msg': self.a_msg})]).start()
                 util.log(1, '合成音频...')
-                tm = time.time()
                 #文字也推送出去，为了ue5
                 parts = self.__split_text(text=self.a_msg, length=100) # split the msg to several parts
                 # print("parts: ", parts)
                 previous_thread_event = None # the prev thread event
                 current_thread_event = None # the current thread event
                 for part in parts:
+                    tm = time.time()
                     result = self.sp.to_sample(part, self.__get_mood_voice())
                     #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
                     util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
-                    tm = time.time()
+
                     if result is not None:
                         previous_thread_event = current_thread_event
                         current_thread_event = threading.Event()

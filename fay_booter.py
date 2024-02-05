@@ -170,7 +170,7 @@ def console_listener():
             feiFei.last_quest_time = time.time()
             interact = Interact("console", 1, {'user': '', 'msg': msg})
             thr = MyThread(target=feiFei.on_interact, args=[interact])
-            thr.start()
+            thr.start() 
             thr.join()
 
         else:

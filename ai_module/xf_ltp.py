@@ -48,12 +48,13 @@ def get_score(text):
 
 :param text: 文本
 
-:returns: 情感极性分类 (2为褒义, 1为中性 0为贬义,, -1为分析失败)
+:returns: 情感极性分类 (2为褒义, 1为中性 0为贬义, -1为分析失败)
 """
 
 
 def get_sentiment(text):
     result = __quest(text)
+    print("result: ", result)
     if result['desc'] == 'success':
         return int(result['data']['sentiment']) + 1
     return -1

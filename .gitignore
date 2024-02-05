@@ -139,3 +139,9 @@ paraphrase-multilingual-MiniLM-L12-v2/
 
 # api keys
 system.conf
+
+# cemotion
+.cemotion_cache/
+
+# datas
+datas/

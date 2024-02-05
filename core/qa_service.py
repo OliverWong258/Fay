@@ -97,4 +97,12 @@ class QAService:
     def __SBert_similar(self, s1, s2):
         # Compute cosine-similarits
         return sentence_bert.similarity(s1, s2)
+        
 
+if __name__ == "__main__":
+    # test the cost
+    qa_system = QAService()
+    test_msg = "这个产品有什么优点？"
+    start_time = time.time()
+    qa_system.question("qa", test_msg)
+    print("Cost: ", time.time()-start_time)
