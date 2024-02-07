@@ -3,6 +3,7 @@ import imp
 import math
 import os
 import random
+from re import S
 import time
 import wave
 import socket
@@ -169,7 +170,6 @@ class FeiFei:
         self.muting = False
         self.cemotion = None
         self.stop_say = False
-        self.name = config_util.config["attribute"]["name"] # the name of the chatbot
 
 
     def __play_song(self):
@@ -363,18 +363,28 @@ class FeiFei:
         perception = config_util.config["interact"]["perception"]
         if typeIndex == 1:
             try:
+                # check emotion_mode
+                text = None
+                if cfg.emotion_mode == 'q_based':
+                    text = self.q_msg
+                elif cfg.emotion_mode == 'a_based':
+                    text = self.a_msg
+                elif cfg.emotion_mode == 'qa_based':
+                    text = self.q_msg + self.a_msg
+                    
                 if cfg.ltp_mode == "cemotion":
-                    result = nlp_cemotion.get_sentiment(self.cemotion,self.a_msg) # the emotion of the chatbot should rely on the response first
+                    result = nlp_cemotion.get_sentiment(self.cemotion,text) # the emotion of the chatbot should rely on the response first
                     chat_perception = perception["chat"]
                     if result >= 0.5 and result <= 1:
                         self.mood = self.mood + (chat_perception / 200.0)
                     elif result <= 0.2:
                         self.mood = self.mood - (chat_perception / 100.0)
-                    print("User question: ", self.q_msg)
-                    print("ChatBot respond: ", self.a_msg)
-                    print("ChatBot mood: ", self.mood)
+                    ## for debug
+                    #print("User question: ", self.q_msg)
+                    #print("ChatBot respond: ", self.a_msg)
+                    #print("ChatBot mood: ", self.mood)
                 else:
-                    result = xf_ltp.get_sentiment(self.a_msg)
+                    result = xf_ltp.get_sentiment(text)
                     chat_perception = perception["chat"]
                     if result == 1:
                         self.mood = self.mood + (chat_perception / 200.0)
@@ -396,6 +406,13 @@ class FeiFei:
             self.mood = 1
         if self.mood <= -1:
             self.mood = -1
+            
+    # for debug
+    def test_mood(self):
+        textlist = ["我今天心情不好", "我感到很难过", "我今天很不高兴", "我觉得很难受"]
+        for text in textlist:
+            self.a_msg = text
+            self.__update_mood(typeIndex=1)
 
     def __get_mood_voice(self):
         voice = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
@@ -428,21 +445,40 @@ class FeiFei:
                 MyThread(target=storer.storage_live_interact, args=[Interact('Fay', 0, {'user': 'Fay', 'msg': self.a_msg})]).start()
                 util.log(1, '合成音频...')
                 #文字也推送出去，为了ue5
-                parts = self.__split_text(text=self.a_msg, length=100) # split the msg to several parts
-                # print("parts: ", parts)
+                ## for debug
+                #tm = time.time()
+                #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
+                #util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
+                parts = self.__split_text(text=self.a_msg, length=40) # split the msg to several parts
+                ## for debug
+                #print("parts: ", len(parts))
+
+                # this event will be set when chatbot is interrupted 
+                stop_event = threading.Event()
                 previous_thread_event = None # the prev thread event
                 current_thread_event = None # the current thread event
+                idx = 0
+                time.sleep(10)
                 for part in parts:
+                    # interrupted
+                    if self.stop_say:
+                        stop_event.set()
+                        return
                     tm = time.time()
                     result = self.sp.to_sample(part, self.__get_mood_voice())
                     #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
                     util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
 
                     if result is not None:
+                        # interrupted
+                        if self.stop_say:
+                            stop_event.set()
+                            return
                         previous_thread_event = current_thread_event
                         current_thread_event = threading.Event()
-                        time.sleep(10+0.1*len(part))
-                        MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event]).start()
+                        #time.sleep(10+0.1*len(part))
+                        MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event, stop_event, idx]).start()
+                        idx += 1
                         #MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
                         #return result
         except BaseException as e:
@@ -457,8 +493,15 @@ class FeiFei:
         pygame.mixer.music.play()
 
 
-    def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None):
+    def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None, stop_event=None, idx = 0):
         try:
+            # check if chatbot is already interrupted
+            if stop_event.is_set():
+                return
+            if prev_thread_event!=None:
+                prev_thread_event.wait() # wait for the prev thread to keep the right order
+            print("idx: ", idx)
+            start_time = time.time()
             try:
                 logging.getLogger('eyed3').setLevel(logging.ERROR)
                 audio_length = eyed3.load(file_url).info.time_secs #mp3音频长度
@@ -473,8 +516,6 @@ class FeiFei:
                 self.__play_sound(file_url)
             else:#发送音频给ue和socket
                 #推送ue
-                if prev_thread_event!=None:
-                    prev_thread_event.wait() # wait for the prev thread to keep the right order
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
                 if platform.system() == "Windows":
@@ -487,8 +528,6 @@ class FeiFei:
                         print(e)
                         util.log(1, "唇型数字生成失败，无法使用新版ue5工程")
                 wsa_server.get_instance().add_cmd(content)
-                if curr_thread_event != None:
-                    curr_thread_event.set()
 
             #推送远程音频
             if self.deviceConnect is not None:
@@ -524,6 +563,10 @@ class FeiFei:
             if config_util.config["interact"]["playSound"]:
                 util.log(1, '结束播放！')
             self.speaking = False
+            print("time: ", time.time()-start_time)
+            print("idx: ", idx)
+            if curr_thread_event != None:
+                    curr_thread_event.set()
         except Exception as e:
             print(e)
 
@@ -606,3 +649,8 @@ class FeiFei:
             start = end
 
         return substrings
+
+
+if __name__ == "__main__":
+    chatbot = FeiFei()
+    chatbot.test_mood()

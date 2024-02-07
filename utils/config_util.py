@@ -23,6 +23,7 @@ ASR_mode = None
 local_asr_ip = None 
 local_asr_port = None 
 ltp_mode = None
+emotion_mode = None
 key_fast_api_key = None
 is_proxy = None
 
@@ -47,7 +48,8 @@ def load_config():
     global ASR_mode
     global local_asr_ip 
     global local_asr_port
-    global ltp_mode 
+    global ltp_mode
+    global emotion_mode
     global key_fast_gpt_key
     global is_proxy
 
@@ -73,6 +75,7 @@ def load_config():
     proxy_config = system_config.get('key', 'proxy_config')
     is_proxy = system_config.get('key', 'is_proxy')
     ltp_mode = system_config.get('key', 'ltp_mode')
+    emotion_mode = system_config.get('key', 'emotion_mode')
     key_fast_gpt_key = system_config.get('key', 'fast_gpt_key')
     config = json.load(codecs.open('config.json', encoding='utf-8'))
 

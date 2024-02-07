@@ -66,7 +66,8 @@ class QAService:
             sheet = wb.active
             for row in sheet.iter_rows(min_row=2, values_only=True):
                 if len(row) >= 2:
-                    qna.append([row[0].split(";"), row[1], row[2] if len(row) >= 3 else None])
+                    if not (row[0] is None):    
+                        qna.append([row[0].split(";"), row[1], row[2] if len(row) >= 3 else None])
         except BaseException as e:
             print(f"无法读取Q&A文件 {filename} -> {e}")
         return qna
@@ -75,17 +76,24 @@ class QAService:
         last_similar = 0
         last_answer = ''
         last_action = ''
-        for qa in keyword_dict:
+        quest_list = []
+        quest2qa = {}
+        for i, qa in enumerate(keyword_dict):
             for quest in qa[0]:
-                similar = self.__SBert_similar(text, quest)
-                #similar = self.__string_similar(text, quest)
-                if quest in text:
-                    similar += 0.3
-                if similar > last_similar:
-                    last_similar = similar
-                    last_answer = qa[1]
-                    if query_type == "qa":
-                        last_action = qa[2]
+                quest2qa[quest] = i
+                quest_list.append(quest)
+                
+        similarities = self.__SBert_batch_similar(text, quest_list)
+
+        for i, similarity in enumerate(similarities[0]):
+            quest = quest_list[i]    
+            if quest in text:
+                similarity += 0.3
+            if similarity > last_similar:
+                last_similar = similarity
+                last_answer = keyword_dict[quest2qa[quest]][1]
+                if query_type == "qa":
+                    last_action = keyword_dict[quest2qa[quest]][2]
         if last_similar >= 0.75:
             return last_answer, last_action
         return None, None
@@ -97,12 +105,16 @@ class QAService:
     def __SBert_similar(self, s1, s2):
         # Compute cosine-similarits
         return sentence_bert.similarity(s1, s2)
+    
+    def __SBert_batch_similar(self, target, texts):
+        # Compute cosine-similarits in a batch
+        return sentence_bert.batch_similarity(target, texts)
         
 
 if __name__ == "__main__":
     # test the cost
     qa_system = QAService()
-    test_msg = "这个产品有什么优点？"
+    test_msg = "谁创始了新立讯公司"
     start_time = time.time()
     qa_system.question("qa", test_msg)
     print("Cost: ", time.time()-start_time)
