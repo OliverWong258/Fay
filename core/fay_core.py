@@ -500,8 +500,9 @@ class FeiFei:
                 return
             if prev_thread_event!=None:
                 prev_thread_event.wait() # wait for the prev thread to keep the right order
-            print("idx: ", idx)
-            start_time = time.time()
+            ## for debug
+            #print("idx: ", idx)
+            #start_time = time.time()
             try:
                 logging.getLogger('eyed3').setLevel(logging.ERROR)
                 audio_length = eyed3.load(file_url).info.time_secs #mp3音频长度
@@ -563,8 +564,9 @@ class FeiFei:
             if config_util.config["interact"]["playSound"]:
                 util.log(1, '结束播放！')
             self.speaking = False
-            print("time: ", time.time()-start_time)
-            print("idx: ", idx)
+            ## for debug
+            #print("time: ", time.time()-start_time)
+            #print("idx: ", idx)
             if curr_thread_event != None:
                     curr_thread_event.set()
         except Exception as e:
