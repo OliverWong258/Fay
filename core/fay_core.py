@@ -531,9 +531,10 @@ class FeiFei:
     def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None, stop_event=None, idx = 0):
         try:
             # check if chatbot is already interrupted
-            if stop_event.is_set():
-                print("send to UE interrupted")
-                return
+            if stop_event != None:
+                if stop_event.is_set():
+                    print("send to UE interrupted")
+                    return
             if prev_thread_event!=None:
                 prev_thread_event.wait() # wait for the prev thread to keep the right order
             ## for debug
@@ -553,9 +554,10 @@ class FeiFei:
                 self.__play_sound(file_url, idx)
             else:#发送音频给ue和socket
                 #推送ue
-                if stop_event.is_set():
-                    print("send to UE interrupted")
-                    return
+                if stop_event != None:
+                    if stop_event.is_set():
+                        print("send to UE interrupted")
+                        return
                 tm = time.time()
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
