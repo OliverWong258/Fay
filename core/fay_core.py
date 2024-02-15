@@ -44,6 +44,7 @@ from ai_module import nlp_lingju
 from ai_module import nlp_rwkv_api
 from ai_module import nlp_ChatGLM2
 from ai_module import nlp_fastgpt
+#from ai_module import nlp_assistants
 from ai_module import clf
 from ai_module import sentence_bert
 
@@ -61,8 +62,8 @@ modules = {
     "nlp_lingju": nlp_lingju,
     "nlp_rwkv_api":nlp_rwkv_api,
     "nlp_chatglm2": nlp_ChatGLM2,
-    "nlp_fastgpt": nlp_fastgpt
-
+    "nlp_fastgpt": nlp_fastgpt,
+    #"nlp_assistants": nlp_assistants
 }
 
 # load language model
@@ -247,6 +248,7 @@ class FeiFei:
 
             try:
                 if len(self.interactive) > 0:
+                    tm = time.time()
                     interact: Interact = self.interactive.pop()
                     index = interact.interact_type
                     if index == 1:
@@ -308,6 +310,7 @@ class FeiFei:
                         wsa_server.get_instance().add_cmd(content)
                     self.last_speak_data = self.a_msg               
                     MyThread(target=self.__say, args=['interact']).start()
+                    print("auto speak: ", time.time()-tm)
 
             except BaseException as e:
                 print(e)
@@ -435,6 +438,7 @@ class FeiFei:
     # 合成声音
     def __say(self, styleType):
         try:
+            tm2 = time.time()
             if len(self.a_msg) < 1:
                 self.speaking = False
             else:
@@ -449,16 +453,14 @@ class FeiFei:
                 #tm = time.time()
                 #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
                 #util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
-                parts = self.__split_text(text=self.a_msg, length=40) # split the msg to several parts
-                ## for debug
-                #print("parts: ", len(parts))
-
+                parts = self.__split_text(text=self.a_msg, length=60) # split the msg to several parts
+                # for debug
+                print("parts: ", len(parts))
                 # this event will be set when chatbot is interrupted 
                 stop_event = threading.Event()
                 previous_thread_event = None # the prev thread event
                 current_thread_event = None # the current thread event
                 idx = 0
-                time.sleep(10)
                 for part in parts:
                     # interrupted
                     if self.stop_say:
@@ -467,7 +469,8 @@ class FeiFei:
                     tm = time.time()
                     result = self.sp.to_sample(part, self.__get_mood_voice())
                     #result = self.sp.to_sample(self.a_msg, self.__get_mood_voice())
-                    util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
+                    #util.log(1, '合成音频完成. 耗时: {} ms 文件:{}'.format(math.floor((time.time() - tm) * 1000), result))
+                    util.log(1, '合成音频完成. 耗时: {} ms'.format(math.floor((time.time() - tm) * 1000)))
 
                     if result is not None:
                         # interrupted
@@ -477,20 +480,27 @@ class FeiFei:
                         previous_thread_event = current_thread_event
                         current_thread_event = threading.Event()
                         #time.sleep(10+0.1*len(part))
+                        #self.__send_or_play_audio(result, styleType, None, None, stop_event, idx, )
                         MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event, stop_event, idx]).start()
                         idx += 1
                         #MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
                         #return result
+            print("say: ", time.time()-tm2)
         except BaseException as e:
             print(e)
         self.speaking = False
         return None
 
-    def __play_sound(self, file_url):
+    def __play_sound(self, file_url, idx):
         util.log(1, '播放音频...')
-        util.log(1, '问答处理总时长：{} ms'.format(math.floor((time.time() - self.last_quest_time) * 1000)))
+        # respond time
+        if idx == 0:
+            util.log(1, '问答处理总时长：{} ms'.format(math.floor((time.time() - self.last_quest_time) * 1000)))
         pygame.mixer.music.load(file_url)
         pygame.mixer.music.play()
+        #sound = pygame.mixer.Sound(file=file_url)
+        ## 播放音频
+        #sound.play()
 
 
     def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None, stop_event=None, idx = 0):
@@ -514,9 +524,10 @@ class FeiFei:
             #     print(audio_length)
             # if audio_length <= config_util.config["interact"]["maxInteractTime"] or say_type == "script":
             if config_util.config["interact"]["playSound"]: # 展板播放
-                self.__play_sound(file_url)
+                self.__play_sound(file_url, idx)
             else:#发送音频给ue和socket
                 #推送ue
+                tm = time.time()
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
                 if platform.system() == "Windows":
@@ -529,6 +540,7 @@ class FeiFei:
                         print(e)
                         util.log(1, "唇型数字生成失败，无法使用新版ue5工程")
                 wsa_server.get_instance().add_cmd(content)
+                print("send to UE: ", time.time()-tm)
 
             #推送远程音频
             if self.deviceConnect is not None:
@@ -552,7 +564,7 @@ class FeiFei:
             length = 0
             while(not self.stop_say):
                 if audio_length + 0.5 > length:
-                    length = length + 1
+                    length = length + 1 
                     time.sleep(1)
                 else:
                     break
@@ -628,7 +640,7 @@ class FeiFei:
 
     # splited text in a list
     def __split_text(self, text, length):
-        chinese_punctuations = "。？！”’）》】"
+        chinese_punctuations = "。？！”’"
         substrings = []
         start = 0
 

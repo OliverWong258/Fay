@@ -1,3 +1,4 @@
+from __future__ import barry_as_FLUFL
 import time
 
 import azure.cognitiveservices.speech as speechsdk
@@ -10,6 +11,7 @@ from utils import util, config_util
 from utils import config_util as cfg
 import pygame
 import edge_tts
+import io
 
 
 
@@ -58,6 +60,8 @@ class Speech:
 
     def to_sample(self, text, style):
         if self.ms_tts:
+            ## show the text
+            #print("text: ", text)
             voice_type = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
             voice_name = EnumVoice.XIAO_XIAO.value["voiceName"]
             if voice_type is not None:
@@ -72,14 +76,32 @@ class Speech:
                    '</mstts:express-as>' \
                    '</voice>' \
                    '</speak>'.format(voice_name, style, 1.8, text)
+            tm = time.time()
             result = self.__synthesizer.speak_ssml(ssml)
+            print("send for result: ", time.time()-tm)
             audio_data_stream = speechsdk.AudioDataStream(result)
+            """
+            audio_data_bytes = io.BytesIO()
+            buffer_size = 4096  # 定义缓冲区的大小
 
+            ret = 1
+            while ret != 0:
+                # 使用read_data从AudioDataStream读取数据到buffer
+                buffer = bytes(buffer_size)
+                ret = audio_data_stream.read_data(buffer)
+                # 将读取到的数据写入到BytesIO对象中
+                audio_data_bytes.write(buffer)
+                    
+            audio_data_bytes.seek(0)
+            """
+            tm = time.time()
             file_url = './samples/sample-' + str(int(time.time() * 1000)) + '.mp3'
             audio_data_stream.save_to_wav_file(file_url)
+            print("save to file: ", time.time()-tm)
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 self.__history_data.append((voice_name, style, text, file_url))
                 return file_url
+                #return audio_data_bytes
             else:
                 util.log(1, "[x] 语音转换失败！")
                 util.log(1, "[x] 原因: " + str(result.reason))

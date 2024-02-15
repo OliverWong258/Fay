@@ -87,14 +87,14 @@ class QAService:
 
         for i, similarity in enumerate(similarities[0]):
             quest = quest_list[i]    
-            if quest in text:
-                similarity += 0.3
+            #if quest in text:
+                #similarity += 0.3
             if similarity > last_similar:
                 last_similar = similarity
                 last_answer = keyword_dict[quest2qa[quest]][1]
                 if query_type == "qa":
                     last_action = keyword_dict[quest2qa[quest]][2]
-        if last_similar >= 0.75:
+        if last_similar >= 0.8:
             return last_answer, last_action
         return None, None
 
