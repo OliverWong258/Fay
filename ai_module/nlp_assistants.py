@@ -8,7 +8,7 @@ os.environ["http_proxy"] = "http://localhost:7890"
 os.environ["https_proxy"] = "http://localhost:7890"
 
 openai.proxy = "http://127.0.0.1:7890"
-client = OpenAI(api_key="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") # gpt4 key
+client = OpenAI(api_key=util.assistant_key) # gpt4 key
 # for debug
 print(f"client: {client}")
 
