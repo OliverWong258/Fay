@@ -32,7 +32,7 @@ from core import qa_service
 
 import pygame
 from utils import config_util as cfg
-from core import content_db
+from core.content_db import Content_Db
 from datetime import datetime
 from ai_module import nlp_cemotion
 
@@ -50,6 +50,9 @@ from ai_module import clf
 from ai_module import sentence_bert
 
 import platform
+
+from utils.show_time import show_time
+
 if platform.system() == "Windows":
     import sys
     sys.path.append("test/ovr_lipsync")
@@ -72,6 +75,7 @@ nlp = clf.nlp
 
 
 def determine_nlp_strategy(sendto,msg):
+    show_time("determine_nlp_strategy", 1)
     text = ''
     textlist = []
     try:
@@ -98,6 +102,7 @@ def determine_nlp_strategy(sendto,msg):
         print(e)
         util.log(1, '自然语言处理错误！')
         text = '哎呀，你这么说我也不懂，详细点呗'   
+    show_time("determine_nlp_strategy", 2)
     return text,textlist
     
 
@@ -108,6 +113,7 @@ def determine_nlp_strategy(sendto,msg):
 
 #文本消息处理
 def send_for_answer(msg,sendto):
+    show_time("send_for_answer", 1)
     contentdb = Content_Db()
     contentdb.add_content('member','send',msg)
     wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":msg}})
@@ -134,6 +140,7 @@ def send_for_answer(msg,sendto):
                 contentdb.add_content('fay','send',textlist[i]['text'])
                 wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":textlist[i]['text']}})
                 i+= 1
+    show_time("send_for_answer", 2)    
     return text
 
 
@@ -189,6 +196,7 @@ class FeiFei:
 
     #检查是否命中指令或q&a
     def __get_answer(self, interleaver, text):
+        show_time("__get_answer(qa system)", 1)
         if interleaver == "mic":
             #指令
             keyword = qa_service.question('command',text)
@@ -242,6 +250,7 @@ class FeiFei:
         answer = None
         # 全局问答
         answer = qa_service.question('qa',text)
+        show_time("__get_answer(qa system)", 2)
         if answer is not None:
             return answer
 
@@ -253,7 +262,7 @@ class FeiFei:
 
             try:
                 if len(self.interactive) > 0:
-                    tm = time.time()
+                    show_time("__auto_speak", 1)
                     interact: Interact = self.interactive.pop()
                     index = interact.interact_type
                     if index == 1:
@@ -280,8 +289,8 @@ class FeiFei:
                                 content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': "静音指令正在执行，不互动"}}
                                 wsa_server.get_instance().add_cmd(content)
                             continue
-
-                        contentdb = content_db.new_instance()  
+                        
+                        contentdb = Content_Db()
                         contentdb.add_content('member','speak',self.q_msg)
                         wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":self.q_msg}})
                      
@@ -324,21 +333,22 @@ class FeiFei:
                                 self.stop_event.clear()
                             self.thread = MyThread(target=self.__say, args=['interact', self.stop_event])
                             self.thread.start()
-                            print("create thread with stop event")
-                            print("thread: ", self.thread)
+                            #print("create thread with stop event")
+                            #print("thread: ", self.thread)
                     else:
                         if self.stop_event.is_set():
                             self.stop_event.clear()
                         self.thread = MyThread(target=self.__say, args=['interact', self.stop_event])
                         self.thread.start()
-                        print("create thread with stop event")
-                        print("thread: ", self.thread)
+                        #print("create thread with stop event")
+                        #print("thread: ", self.thread)
                                 
-                    print("auto speak: ", time.time()-tm)
+                    show_time("__auto_speak", 2)
             except BaseException as e:
                 print(e)
 
     def write_to_file(self, path, filename, content):
+        show_time("write_to_file(asr result)", 1)
         if not os.path.exists(path):
             os.makedirs(path)
         full_path = os.path.join(path, filename)
@@ -346,6 +356,7 @@ class FeiFei:
             file.write(content)
             file.flush()  
             os.fsync(file.fileno()) 
+        show_time("write_to_file(asr result)", 2)
 
 
 
@@ -380,12 +391,12 @@ class FeiFei:
                     if  self.old_mood != self.mood:
                         wsa_server.get_instance().add_cmd(content)
                         self.old_mood = self.mood
-                 
             else:
                   self.connect = False
 
     # 更新情绪
     def __update_mood(self, typeIndex):
+        show_time("__update_mood", 1)
         perception = config_util.config["interact"]["perception"]
         if typeIndex == 1:
             try:
@@ -433,6 +444,7 @@ class FeiFei:
             self.mood = 1
         if self.mood <= -1:
             self.mood = -1
+        show_time("__update_mood", 2)
             
     # for debug
     def test_mood(self):
@@ -442,6 +454,7 @@ class FeiFei:
             self.__update_mood(typeIndex=1)
 
     def __get_mood_voice(self):
+        show_time("__get_mood_voice", 1)
         voice = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
         if voice is None:
             voice = EnumVoice.XIAO_XIAO
@@ -457,12 +470,13 @@ class FeiFei:
             sayType = styleList["assistant"]
         if 0.5 <= self.mood <= 1:
             sayType = styleList["cheerful"]
+        show_time("__get_mood_voice", 2)
         return sayType
 
     # 合成声音
     def __say(self, styleType, stop_event=None):
         try:
-            tm2 = time.time()
+            show_time("__say", 1)
             if len(self.a_msg) < 1:
                 self.speaking = False
             else:
@@ -510,7 +524,7 @@ class FeiFei:
                         idx += 1
                         #MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
                         #return result
-            print("say: ", time.time()-tm2)
+            show_time("__say", 2)
         except BaseException as e:
             print(e)
         self.speaking = False
@@ -529,6 +543,7 @@ class FeiFei:
 
 
     def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None, stop_event=None, idx = 0):
+        show_time("__send_or_play_audio", 1)
         try:
             # check if chatbot is already interrupted
             if stop_event != None:
@@ -615,6 +630,7 @@ class FeiFei:
                     curr_thread_event.set()
         except Exception as e:
             print(e)
+        show_time("__send_or_play_audio", 2)
 
     def __device_socket_keep_alive(self):
         while True:

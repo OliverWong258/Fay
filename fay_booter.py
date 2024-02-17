@@ -5,6 +5,7 @@ from core.recorder import Recorder
 from core.fay_core import FeiFei
 from scheduler.thread_manager import MyThread
 from utils import util, config_util, stream_util, ngrok_util
+from utils.show_time import show_time
 from core.wsa_server import MyServer
 from scheduler.thread_manager import MyThread
 
@@ -25,13 +26,16 @@ class RecorderListener(Recorder):
         super().__init__(fei)
 
     def on_speaking(self, text):
+        show_time("on_speaking", 1)
         if len(text) > 1:
             interact = Interact("mic", 1, {'user': '', 'msg': text})
             util.printInfo(3, "语音", '{}'.format(interact.data["msg"]), time.time())
             feiFei.on_interact(interact)
             time.sleep(2)
+        show_time("on_speaking", 2)
 
     def get_stream(self):
+        show_time("get_stream", 1)
         self.paudio = pyaudio.PyAudio()
         device_id,devInfo = self.__findInternalRecordingDevice(self.paudio)
         if device_id < 0:
@@ -43,6 +47,7 @@ class RecorderListener(Recorder):
         self.stream = self.paudio.open(input_device_index=device_id, rate=self.__RATE, format=self.__FORMAT, channels=channels, input=True)
         self.__running = True
         MyThread(target=self.__pyaudio_clear).start()
+        show_time("get_stream", 2)
         return self.stream
 
     def __pyaudio_clear(self):

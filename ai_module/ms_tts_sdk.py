@@ -12,6 +12,7 @@ from utils import config_util as cfg
 import pygame
 import edge_tts
 import io
+from utils.show_time import show_time
 
 
 
@@ -59,6 +60,7 @@ class Speech:
     """
 
     def to_sample(self, text, style):
+        show_time("to_sample(TTS)", 1)
         if self.ms_tts:
             ## show the text
             #print("text: ", text)
@@ -76,9 +78,9 @@ class Speech:
                    '</mstts:express-as>' \
                    '</voice>' \
                    '</speak>'.format(voice_name, style, 1.8, text)
-            tm = time.time()
+            show_time("send for result(TTS)", 1)
             result = self.__synthesizer.speak_ssml(ssml)
-            print("send for result: ", time.time()-tm)
+            show_time("send for result(TTS)", 2)
             audio_data_stream = speechsdk.AudioDataStream(result)
             """
             audio_data_bytes = io.BytesIO()
@@ -94,17 +96,19 @@ class Speech:
                     
             audio_data_bytes.seek(0)
             """
-            tm = time.time()
+            show_time("save to file(TTS result)", 1)
             file_url = './samples/sample-' + str(int(time.time() * 1000)) + '.mp3'
             audio_data_stream.save_to_wav_file(file_url)
-            print("save to file: ", time.time()-tm)
+            show_time("save to file(TTS result)", 2)
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 self.__history_data.append((voice_name, style, text, file_url))
+                show_time("to_sample(TTS)", 2)
                 return file_url
                 #return audio_data_bytes
             else:
                 util.log(1, "[x] 语音转换失败！")
                 util.log(1, "[x] 原因: " + str(result.reason))
+                show_time("to_sample(TTS)", 2)
                 return None
         else:
             voice_type = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
