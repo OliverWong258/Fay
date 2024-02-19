@@ -53,6 +53,7 @@ import platform
 
 from utils.show_time import show_time
 
+
 if platform.system() == "Windows":
     import sys
     sys.path.append("test/ovr_lipsync")
@@ -75,7 +76,6 @@ nlp = clf.nlp
 
 
 def determine_nlp_strategy(sendto,msg):
-    show_time("determine_nlp_strategy", 1)
     text = ''
     textlist = []
     try:
@@ -102,7 +102,6 @@ def determine_nlp_strategy(sendto,msg):
         print(e)
         util.log(1, '自然语言处理错误！')
         text = '哎呀，你这么说我也不懂，详细点呗'   
-    show_time("determine_nlp_strategy", 2)
     return text,textlist
     
 
@@ -113,7 +112,6 @@ def determine_nlp_strategy(sendto,msg):
 
 #文本消息处理
 def send_for_answer(msg,sendto):
-    show_time("send_for_answer", 1)
     contentdb = Content_Db()
     contentdb.add_content('member','send',msg)
     wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"member","content":msg}})
@@ -140,7 +138,6 @@ def send_for_answer(msg,sendto):
                 contentdb.add_content('fay','send',textlist[i]['text'])
                 wsa_server.get_web_instance().add_cmd({"panelReply": {"type":"fay","content":textlist[i]['text']}})
                 i+= 1
-    show_time("send_for_answer", 2)    
     return text
 
 
@@ -179,11 +176,8 @@ class FeiFei:
         self.muting = False
         self.cemotion = None
         self.stop_say = False
-        self.interrupted = False
-        self.sending = False
-        self.prev_sending = False #previous message is still being sent and should be interrupted
-        self.thread = None
-        self.stop_event = threading.Event()
+        self.stop_event = threading.Event() # event that inform the threads which should be interrupted
+        self.threads = {} # record of threads, used for interruption
 
     def __play_song(self):
         self.playing = True
@@ -196,7 +190,6 @@ class FeiFei:
 
     #检查是否命中指令或q&a
     def __get_answer(self, interleaver, text):
-        show_time("__get_answer(qa system)", 1)
         if interleaver == "mic":
             #指令
             keyword = qa_service.question('command',text)
@@ -218,7 +211,9 @@ class FeiFei:
                     self.muting = True
                     self.speaking = True
                     self.a_msg = "好的"
-                    MyThread(target=self.__say, args=['interact']).start()
+                    thread = MyThread(target=self.__say, args=['interact'])
+                    thread.start()
+                    self.threads[thread.ident] = thread
                     time.sleep(0.5)
                     wsa_server.get_web_instance().add_cmd({"panelMsg": ""})
                     if not cfg.config["interact"]["playSound"]: # 非展板播放
@@ -250,7 +245,6 @@ class FeiFei:
         answer = None
         # 全局问答
         answer = qa_service.question('qa',text)
-        show_time("__get_answer(qa system)", 2)
         if answer is not None:
             return answer
 
@@ -262,7 +256,6 @@ class FeiFei:
 
             try:
                 if len(self.interactive) > 0:
-                    show_time("__auto_speak", 1)
                     interact: Interact = self.interactive.pop()
                     index = interact.interact_type
                     if index == 1:
@@ -307,7 +300,7 @@ class FeiFei:
                         elif answer != 'NO_ANSWER': #语音内容没有命中指令,回复q&a内容
                             text = answer
                         self.a_msg = text
-                        # the emotion of the chatbot should mainly rely on the response
+                        # change the position to start self.__update_mood so that the response from the chatbot can be taken into account
                         MyThread(target=self.__update_mood, args=[interact.interact_type]).start()                        
                         self.write_to_file("./logs", "answer_result.txt", text)
                         contentdb.add_content('fay','speak',self.a_msg)
@@ -323,32 +316,27 @@ class FeiFei:
                         content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': self.a_msg}}
                         wsa_server.get_instance().add_cmd(content)
                     self.last_speak_data = self.a_msg
-                    if self.thread != None:
-                        if self.thread.is_alive():
-                            self.stop_event.set()
-                            self.thread = MyThread(target=self.__say, args=['interact']).start()
-                            print("set stop event")
-                        else:
-                            if self.stop_event.is_set():
-                                self.stop_event.clear()
-                            self.thread = MyThread(target=self.__say, args=['interact', self.stop_event])
-                            self.thread.start()
-                            #print("create thread with stop event")
-                            #print("thread: ", self.thread)
+                    
+                    if self.__check_threads(): # previous threads exist, should be interrupted
+                        self.stop_event.set()
+                        thread = MyThread(target=self.__say, args=['interact'])
+                        thread.start()
+                        self.threads[thread.ident] = thread # add the new thread to the threads dictionary
+                        print("set stop event")
                     else:
-                        if self.stop_event.is_set():
+                        if self.stop_event.is_set(): # clear the event
                             self.stop_event.clear()
-                        self.thread = MyThread(target=self.__say, args=['interact', self.stop_event])
-                        self.thread.start()
+                            print("stop event cleared")
+                        thread = MyThread(target=self.__say, args=['interact', self.stop_event])
+                        thread.start()
+                        self.threads[thread.ident] = thread
                         #print("create thread with stop event")
                         #print("thread: ", self.thread)
                                 
-                    show_time("__auto_speak", 2)
             except BaseException as e:
                 print(e)
 
     def write_to_file(self, path, filename, content):
-        show_time("write_to_file(asr result)", 1)
         if not os.path.exists(path):
             os.makedirs(path)
         full_path = os.path.join(path, filename)
@@ -356,7 +344,6 @@ class FeiFei:
             file.write(content)
             file.flush()  
             os.fsync(file.fileno()) 
-        show_time("write_to_file(asr result)", 2)
 
 
 
@@ -396,21 +383,20 @@ class FeiFei:
 
     # 更新情绪
     def __update_mood(self, typeIndex):
-        show_time("__update_mood", 1)
         perception = config_util.config["interact"]["perception"]
         if typeIndex == 1:
             try:
                 # check emotion_mode
                 text = None
-                if cfg.emotion_mode == 'q_based':
+                if cfg.emotion_mode == 'q_based': # based on questions from user
                     text = self.q_msg
-                elif cfg.emotion_mode == 'a_based':
+                elif cfg.emotion_mode == 'a_based': # based on response of chatbot
                     text = self.a_msg
-                elif cfg.emotion_mode == 'qa_based':
+                elif cfg.emotion_mode == 'qa_based': # a combination of the above
                     text = self.q_msg + self.a_msg
                     
                 if cfg.ltp_mode == "cemotion":
-                    result = nlp_cemotion.get_sentiment(self.cemotion,text) # the emotion of the chatbot should rely on the response first
+                    result = nlp_cemotion.get_sentiment(self.cemotion,text)
                     chat_perception = perception["chat"]
                     if result >= 0.5 and result <= 1:
                         self.mood = self.mood + (chat_perception / 150.0)
@@ -444,7 +430,6 @@ class FeiFei:
             self.mood = 1
         if self.mood <= -1:
             self.mood = -1
-        show_time("__update_mood", 2)
             
     # for debug
     def test_mood(self):
@@ -454,7 +439,6 @@ class FeiFei:
             self.__update_mood(typeIndex=1)
 
     def __get_mood_voice(self):
-        show_time("__get_mood_voice", 1)
         voice = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
         if voice is None:
             voice = EnumVoice.XIAO_XIAO
@@ -470,13 +454,11 @@ class FeiFei:
             sayType = styleList["assistant"]
         if 0.5 <= self.mood <= 1:
             sayType = styleList["cheerful"]
-        show_time("__get_mood_voice", 2)
         return sayType
 
     # 合成声音
     def __say(self, styleType, stop_event=None):
         try:
-            show_time("__say", 1)
             if len(self.a_msg) < 1:
                 self.speaking = False
             else:
@@ -494,7 +476,6 @@ class FeiFei:
                 parts = self.__split_text(text=self.a_msg, length=60) # split the msg to several parts
                 # for debug
                 print("parts: ", len(parts))
-                # this event will be set when chatbot is interrupted 
                 previous_thread_event = None # the prev thread event
                 current_thread_event = None # the current thread event
                 idx = 0
@@ -502,6 +483,8 @@ class FeiFei:
                     # interrupted
                     if stop_event != None:
                         if stop_event.is_set():
+                            current_thread = threading.current_thread()
+                            del self.threads[current_thread.ident]
                             print("interrupted in first place")
                             return
                     tm = time.time()
@@ -514,20 +497,26 @@ class FeiFei:
                         # interrupted
                         if stop_event != None:
                             if stop_event.is_set():
+                                current_thread = threading.current_thread()
+                                del self.threads[current_thread.ident]
                                 print("interrupted in second place")
                                 return
                         previous_thread_event = current_thread_event
                         current_thread_event = threading.Event()
                         #time.sleep(10+0.1*len(part))
                         #self.__send_or_play_audio(result, styleType, None, None, stop_event, idx, )
-                        MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event, stop_event, idx]).start()
+                        thread = MyThread(target=self.__send_or_play_audio, args=[result, styleType, previous_thread_event, current_thread_event, stop_event, idx])
+                        thread.start()
+                        self.threads[thread.ident] = thread
                         idx += 1
                         #MyThread(target=self.__send_or_play_audio, args=[result, styleType]).start()
                         #return result
-            show_time("__say", 2)
         except BaseException as e:
             print(e)
+        current_thread = threading.current_thread()
+        del self.threads[current_thread.ident] # remove the thread from the dictionary since it has been completed
         self.speaking = False
+        show_time("__say", 2)
         return None
 
     def __play_sound(self, file_url, idx):
@@ -543,13 +532,7 @@ class FeiFei:
 
 
     def __send_or_play_audio(self, file_url, say_type, prev_thread_event=None, curr_thread_event=None, stop_event=None, idx = 0):
-        show_time("__send_or_play_audio", 1)
         try:
-            # check if chatbot is already interrupted
-            if stop_event != None:
-                if stop_event.is_set():
-                    print("send to UE interrupted")
-                    return
             if prev_thread_event!=None:
                 prev_thread_event.wait() # wait for the prev thread to keep the right order
             ## for debug
@@ -566,13 +549,16 @@ class FeiFei:
             #     print(audio_length)
             # if audio_length <= config_util.config["interact"]["maxInteractTime"] or say_type == "script":
             if config_util.config["interact"]["playSound"]: # 展板播放
+                # check if chatbot is already interrupted
+                if stop_event != None:
+                    if stop_event.is_set():
+                        current_thread = threading.current_thread()
+                        del self.threads[current_thread.ident]
+                        print("send to playboard interrupted")
+                        return
                 self.__play_sound(file_url, idx)
             else:#发送音频给ue和socket
                 #推送ue
-                if stop_event != None:
-                    if stop_event.is_set():
-                        print("send to UE interrupted")
-                        return
                 tm = time.time()
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'audio', 'Value': os.path.abspath(file_url), 'Text': self.a_msg, 'Time': audio_length, 'Type': say_type}}
                 #计算lips
@@ -585,8 +571,16 @@ class FeiFei:
                     except Exception as e:
                         print(e)
                         util.log(1, "唇型数字生成失败，无法使用新版ue5工程")
+                # check if chatbot is already interrupted
+                if stop_event != None:
+                    if stop_event.is_set():
+                        current_thread = threading.current_thread()
+                        del self.threads[current_thread.ident]
+                        print("send to UE interrupted")
+                        return
                 wsa_server.get_instance().add_cmd(content)
-                print("send to UE: ", time.time()-tm)
+                print("send to UE: ", time.time()-tm) # the time used to send to UE
+                show_time("send to UE", 2) # the moment the message is sent to UE
 
             #推送远程音频
             if self.deviceConnect is not None:
@@ -605,7 +599,9 @@ class FeiFei:
                 except socket.error as serr:
                     util.log(1,"远程音频输入输出设备已经断开：{}".format(serr))
                     wsa_server.get_web_instance().add_cmd({"remote_audio_connect": False}) 
-
+            
+            current_thread = threading.current_thread()
+            del self.threads[current_thread.ident] # remove the thread from the dictionary since the audio is set
 
             #打断时取消等待        
             length = 0
@@ -630,7 +626,7 @@ class FeiFei:
                     curr_thread_event.set()
         except Exception as e:
             print(e)
-        show_time("__send_or_play_audio", 2)
+
 
     def __device_socket_keep_alive(self):
         while True:
@@ -711,7 +707,13 @@ class FeiFei:
             start = end
 
         return substrings
-
+    
+    # check if there are any threads exist, which should be interripted
+    def __check_threads(self):
+        for thread in self.threads.values():
+            if thread.is_alive():
+                return True
+        return False
 
 if __name__ == "__main__":
     chatbot = FeiFei()

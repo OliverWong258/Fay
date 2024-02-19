@@ -12,7 +12,7 @@ from utils import config_util as cfg
 import pygame
 import edge_tts
 import io
-from utils.show_time import show_time
+import math
 
 
 
@@ -60,7 +60,6 @@ class Speech:
     """
 
     def to_sample(self, text, style):
-        show_time("to_sample(TTS)", 1)
         if self.ms_tts:
             ## show the text
             #print("text: ", text)
@@ -78,9 +77,7 @@ class Speech:
                    '</mstts:express-as>' \
                    '</voice>' \
                    '</speak>'.format(voice_name, style, 1.8, text)
-            show_time("send for result(TTS)", 1)
             result = self.__synthesizer.speak_ssml(ssml)
-            show_time("send for result(TTS)", 2)
             audio_data_stream = speechsdk.AudioDataStream(result)
             """
             audio_data_bytes = io.BytesIO()
@@ -96,19 +93,15 @@ class Speech:
                     
             audio_data_bytes.seek(0)
             """
-            show_time("save to file(TTS result)", 1)
             file_url = './samples/sample-' + str(int(time.time() * 1000)) + '.mp3'
             audio_data_stream.save_to_wav_file(file_url)
-            show_time("save to file(TTS result)", 2)
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 self.__history_data.append((voice_name, style, text, file_url))
-                show_time("to_sample(TTS)", 2)
                 return file_url
                 #return audio_data_bytes
             else:
                 util.log(1, "[x] 语音转换失败！")
                 util.log(1, "[x] 原因: " + str(result.reason))
-                show_time("to_sample(TTS)", 2)
                 return None
         else:
             voice_type = tts_voice.get_voice_of(config_util.config["attribute"]["voice"])
@@ -137,12 +130,32 @@ class Speech:
 
 
 if __name__ == '__main__':
+    str1 = "我叫Fay"
+    str2 = "我叫Fay,我今年18岁"
+    str3 = "我叫Fay,我今年18岁，很年青"
+    str4 = "在黎明的光辉中，希望如同绽放的花朵，温暖而明亮，照亮前行的道路"
+    str5 = "当夜幕降临，星辰在天际闪烁，我们仰望着那无尽的宇宙，心中充满了对未知世界的无限憧憬与向往"
+    str6 = "在这个充满挑战与机遇的时代，我们必须勇敢地面对困难，把握每一个机会，不断学习，努力进步，为实现梦想而不懈奋斗"
+    str7 = "生活就像一场旅行，我们在路上遇到各种风景，有时候是晴朗的天空，有时候是风雨交加。重要的是保持乐观的态度，享受旅途中的每一个瞬间"
+    str8 = "在这片广阔的天地间，每个人都是独一无二的存在。我们应该珍惜自己的特色，勇敢地追求自己的梦想，即使路途遥远且充满挑战，也不应放弃，因为每一步都离梦想更近"
+    str9 = "记住，成功的道路从不会是一帆风顺的。它充满了挑战和困难，但正是这些挑战和困难，塑造了我们的意志和坚韧。只有勇敢面对，积极应对，才能在生命的舞台上绽放出最耀眼的光彩"
+    str10 = "在生命的长河中，每个人都在书写着自己的故事。无论是欢笑还是泪水，都是这个故事中不可或缺的一部分。让我们拥抱生活的每一刻，不畏惧挑战，勇敢前行，用心感受生活的美好，把握每一个现在，共同创造一个更加精彩的未来"
+    eng1 = "The cat sat."
+    eng2 = "A quick brown fox jumps over the lazy dog nearby."
+    eng3 = "She opened her book, eager to lose herself in its pages once again."
+    eng4 = "As the sun dipped below the horizon, the sky turned a magnificent shade of orange, blending into purple."
+    eng5 = "In the heart of the bustling city, a small, unnoticed flower pushed its way through the concrete, seeking sunlight."
+    eng6 = "Despite the challenges that lay ahead, she stood at the cliff's edge, taking a deep breath, ready to face her fears with newfound courage."
+    eng7 = "The old library held secrets within its walls, whispering tales of ancient times, magic, and adventures that beckoned anyone daring enough to discover them."
+    eng8 = "Throughout the centuries, philosophers and scientists have pondered the mysteries of the universe, seeking to understand the laws that govern our existence, leading to groundbreaking discoveries that have shaped the course of human history."
     cfg.load_config()
     sp = Speech()
     sp.connect()
-    text = "我叫Fay,我今年18岁，很年青。"
-    s = sp.to_sample(text, "cheerful")
-
-    print(s)
+    test_list = [str1, str2, str3, str4, str5, str6, str7, str8, str9, str10]
+    eng_list = [eng1, eng2, eng3, eng4, eng5, eng6, eng7, eng8]
+    for eng in eng_list:
+        tm = time.time()
+        s = sp.to_sample(eng, "cheerful")
+        print('合成音频完成. 耗时: {} ms'.format(math.floor((time.time() - tm) * 1000)))
     sp.close()
 

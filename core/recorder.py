@@ -10,7 +10,6 @@ from core import wsa_server
 from scheduler.thread_manager import MyThread
 from utils import util
 from utils import config_util as cfg
-from utils.show_time import show_time
 import numpy as np
 # 启动时间 (秒)
 _ATTACK = 0.2
@@ -83,7 +82,6 @@ class Recorder:
         self.wakeup_matched = False        
 
     def __waitingResult(self, iat: asrclient):
-        show_time("__waitingResult(asr)", 1)
         if self.__fay.playing:
             return
         self.processing = True
@@ -159,7 +157,6 @@ class Recorder:
             if not cfg.config["interact"]["playSound"]: # 非展板播放
                 content = {'Topic': 'Unreal', 'Data': {'Key': 'log', 'Value': ""}}
                 wsa_server.get_instance().add_cmd(content)
-        show_time("__waitingResult(asr)", 2)
 
     def __record(self):   
         try:

@@ -94,18 +94,19 @@ class QAService:
                 last_answer = keyword_dict[quest2qa[quest]][1]
                 if query_type == "qa":
                     last_action = keyword_dict[quest2qa[quest]][2]
-        if last_similar >= 0.8:
+        if last_similar >= 0.8: # the minimum similarity to be accepted, can be modified
             return last_answer, last_action
         return None, None
 
     def __string_similar(self, s1, s2):
         return difflib.SequenceMatcher(None, s1, s2).quick_ratio()
     
-    
+    # compute the similarity between two sentences through Sentence Bert, can be time consuming
     def __SBert_similar(self, s1, s2):
-        # Compute cosine-similarits
+        # Compute cosine-similarities
         return sentence_bert.similarity(s1, s2)
     
+    # compute the similarities between the target sentence(question from user) and other sentences(questions in the qa demo) at the same time, much more efficient than the above
     def __SBert_batch_similar(self, target, texts):
         # Compute cosine-similarits in a batch
         return sentence_bert.batch_similarity(target, texts)
