@@ -514,7 +514,8 @@ class FeiFei:
         except BaseException as e:
             print(e)
         current_thread = threading.current_thread()
-        del self.threads[current_thread.ident] # remove the thread from the dictionary since it has been completed
+        if current_thread.ident in self.threads.keys():
+            del self.threads[current_thread.ident] # remove the thread from the dictionary since it has been completed
         self.speaking = False
         show_time("__say", 2)
         return None
@@ -601,7 +602,8 @@ class FeiFei:
                     wsa_server.get_web_instance().add_cmd({"remote_audio_connect": False}) 
             
             current_thread = threading.current_thread()
-            del self.threads[current_thread.ident] # remove the thread from the dictionary since the audio is set
+            if current_thread.ident in self.threads.keys():
+                del self.threads[current_thread.ident] # remove the thread from the dictionary since the audio is set
 
             #打断时取消等待        
             length = 0
@@ -710,8 +712,10 @@ class FeiFei:
     
     # check if there are any threads exist, which should be interripted
     def __check_threads(self):
+        print(self.threads)
         for thread in self.threads.values():
             if thread.is_alive():
+                self.threads = {}
                 return True
         return False
 
