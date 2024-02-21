@@ -319,19 +319,14 @@ class FeiFei:
                     
                     if self.__check_threads(): # previous threads exist, should be interrupted
                         self.stop_event.set()
-                        thread = MyThread(target=self.__say, args=['interact'])
-                        thread.start()
-                        self.threads[thread.ident] = thread # add the new thread to the threads dictionary
-                        print("set stop event")
+                        print("stop event set")
                     else:
-                        if self.stop_event.is_set(): # clear the event
-                            self.stop_event.clear()
-                            print("stop event cleared")
-                        thread = MyThread(target=self.__say, args=['interact', self.stop_event])
-                        thread.start()
-                        self.threads[thread.ident] = thread
-                        #print("create thread with stop event")
-                        #print("thread: ", self.thread)
+                        print("stop event not set")
+                    self.stop_event = threading.Event()
+                    thread = MyThread(target=self.__say, args=['interact', self.stop_event])
+                    thread.start()
+                    self.threads[thread.ident] = thread # add the new thread to the threads dictionary
+
                                 
             except BaseException as e:
                 print(e)
